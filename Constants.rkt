@@ -1,0 +1,78 @@
+
+#lang racket
+(require 2htdp/image)
+
+(provide
+ CANVAS-WIDTH
+ CANVAS-HEIGHT
+ CANVAS-XCENTER
+ CANVAS-YCENTER
+ HANDLE
+ FONTSIZE12
+ FONTSIZE10
+ CONTROLLERWIDTH
+ CONTROLLERHEIGHT
+ FIVE
+ LEFT-KEY-EVENT
+ RIGHT-KEY-EVENT
+ UP-KEY-EVENT
+ DOWN-KEY-EVENT
+ EMPTY-CANVAS
+ UNSELECTED
+ SELECTED
+ PARTICLE-RADIUS
+ PARTICLE-CENTER
+ PARTICLE-IMG
+ PARTICLE-CENTER-IMG
+ VELOCITY-KEY-EVENT
+ POS-KEY-EVENT
+ X-KEY-EVENT
+ Y-KEY-EVENT
+ XY-KEY-EVENT
+ RECT-TYPE
+ INNER-RECT-COLOR
+ GAP
+ SCENE1
+ SCENE2
+ SCENE3
+ ELSE
+ SPACE)
+(define ELSE 0)
+(define SPACE 30)
+(define CANVAS-WIDTH 600)
+(define CANVAS-HEIGHT 500)
+(define CANVAS-XCENTER (/ CANVAS-WIDTH 2))
+(define CANVAS-YCENTER  (/ CANVAS-HEIGHT 2))
+(define UNSELECTED "false")
+(define SELECTED "true")
+(define HANDLE 10)
+(define FONTSIZE12 12)
+(define FONTSIZE10 10)
+(define CONTROLLERWIDTH 150)
+(define CONTROLLERHEIGHT 100)
+(define GAP 50)
+(define FIVE 5)
+(define LEFT-KEY-EVENT "left")
+(define RIGHT-KEY-EVENT "right")
+(define UP-KEY-EVENT "up")
+(define DOWN-KEY-EVENT "down")
+(define VELOCITY-KEY-EVENT "v")
+(define POS-KEY-EVENT "p")
+(define X-KEY-EVENT "x")
+(define Y-KEY-EVENT "y")
+(define XY-KEY-EVENT "z")
+(define RECT-TYPE "outline")
+(define INNER-RECT-COLOR "blue")
+
+(define EMPTY-CANVAS (empty-scene CANVAS-WIDTH CANVAS-HEIGHT))
+(define PARTICLE-RADIUS 10)
+(define PARTICLE-CENTER 2)
+(define PARTICLE-IMG
+  (circle PARTICLE-RADIUS "solid" "red"))
+(define PARTICLE-CENTER-IMG
+  (circle PARTICLE-CENTER "solid" "black"))
+
+(define SCENE1 (empty-scene 150 60))
+(define SCENE2 (empty-scene 60 100))
+(define SCENE3 (empty-scene 150 100))
+

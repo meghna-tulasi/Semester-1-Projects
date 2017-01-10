@@ -1,0 +1,1030 @@
+#lang racket
+(require rackunit)
+(require "extras.rkt")
+(require "sets.rkt")
+(require "WidgetWorks.rkt")
+(require 2htdp/universe)   
+(require 2htdp/image)
+(check-location "10" "q1.rkt")
+
+
+(provide
+ container-init
+ Container<%>
+ Widget<%>
+ SWidget<%>)
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;CONSTANT-DEFINITIONS:
+
+(define CANVAS-WIDTH 500)
+(define CANVAS-HEIGHT 600)
+(define EMPTY-CANVAS (empty-scene CANVAS-WIDTH CANVAS-HEIGHT))
+(define CANVAS-XCENTER (/ CANVAS-WIDTH 2))
+(define CANVAS-YCENTER (/ CANVAS-HEIGHT 2))
+
+(define NEW-THROBBER-EVENT "t")
+(define NEW-CLOCK-EVENT "c")
+(define NEW-POLTICIAN-EVENT "p")
+
+(define BUTTON-DOWN "button-down")
+(define BUTTON-UP "button-up")
+(define DRAG "drag")
+(define MOVE "move")
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; INTERFACES :
+
+;; A Metatoy is an object of any class that implements Metatoy<%>.
+
+
+(define Metatoy<%>
+  (interface (SWidget<%>)
+    ;; this means: include all the methods in SWidget<%>
+    ;; -> ListOfToy
+    get-toys
+    
+    ))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; A Toy is an object of any class that implements Toy<%>
+;; three such classes, one for each kind of toy 
+
+(define Toy<%> 
+  (interface (SWidget<%>)  ;; this means: include all the methods in
+    ;;  Widget<%>.
+    
+    
+    ;; -> Int
+    ;; RETURNS: the x or y position of the center of the toy
+    toy-x
+    toy-y
+    
+    ;; -> Int
+    ;; RETURNS: some data related to the toy.  The interpretation of
+    ;; this data depends on the class of the toy.
+    ;; for a throbber, it is the current radius of the throbber
+    ;; for the clock, it is the current value of the clock
+    ;; for a politician, it is the current distance to the mouse
+    toy-data
+    
+    
+    ))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FUNCTION-DEFINITIONS:
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; run : PosNum -> void
+;; GIVEN: a frame rate (in seconds/tick)
+;; EFFECT: creates a MetaToy with no toys in it, and runs it using big-bang
+;; at the given frame rate.
+;; RETURNS :Returns the final state of the Metatoy.
+
+(define (run rate)
+  (local
+    ((define container (container-init CANVAS-WIDTH CANVAS-HEIGHT)))
+    (begin
+      (send container add-stateful-widget (make-metatoy empty))
+      (send container run rate))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; The Metatoy% class
+
+;; Constructor template for Metatoy%:
+;; A Metatoy is a 
+;; (new Metatoy% [toys ListOfToys])
+;; Interpretation: An object of class Metatoy% takes signals from
+;; big-bang and distributes them to its objects as appropriate.
+
+;; make-metatoy : ListOfToys -> Metatoy
+;; GIVEN: a list of toys
+;; RETURNS: an object of class Metatoy% containing the given list of toys and the container
+
+(define (make-metatoy stoys)
+  (new Metatoy% [stoys stoys]))
+
+
+
+(define Metatoy%
+  (class* object% (Metatoy<%>)
+    
+    
+    (init-field stoys) ;  ListOfToys
+    
+    
+    (super-new)
+    
+    
+    
+    ;; after-tick : -> void
+    ;; GIVEN   : No arguments
+    ;; EFFECT  : Updates the metatoy after tick
+    
+    (define/public (after-tick)
+      (begin
+        (for-each
+         (lambda (toy) (send toy after-tick))
+         stoys)))  
+    
+    ;; add-to-scene : -> Scene
+    ;; STRATEGY : Use HOFC foldr on the SWidgets in this Container
+    
+    
+    (define/public (add-to-scene scene)
+      (foldr 
+       (lambda (obj scene)
+         (send obj add-to-scene scene))
+       EMPTY-CANVAS
+       stoys))
+    
+    
+    ;; add-toy : Toy% -> void
+    ;; GIVEN : A Toy
+    ;; EFFECT : Adds toys to the list of stateful toys 
+    
+    (define (add-toy x)
+      (set! stoys (cons x stoys)))
+    
+    
+    
+    
+    ;; after-key-event : KeyEvent -> void
+    ;; GIVEN : A key event
+    ;; EFFECT : Updates the metatoy's toys and create a new toy depending on the key event, add this to Container's stateful widgets
+    ;; STRATEGY: Cases on kev
+    ;; "t" creates a throbber mini-toy
+    ;; "c" creates clock mini-toy
+    ;; "p" politician mini-toy
+    ;; other keystrokes are passed on to the objects in the container
+    
+    (define/public (after-key-event kev)
+      (cond
+        [(key=? kev NEW-THROBBER-EVENT)
+         (add-toy (make-throbber CANVAS-XCENTER CANVAS-YCENTER))]
+        
+        [(key=? kev NEW-CLOCK-EVENT)
+         (add-toy (make-clock CANVAS-XCENTER CANVAS-YCENTER))]
+        
+        [(key=? kev NEW-POLTICIAN-EVENT)
+         (add-toy (make-politician CANVAS-XCENTER CANVAS-YCENTER))]
+        
+        [else
+         (begin
+           (for-each
+            (lambda (toy) (send toy after-key-event kev))
+            stoys))]))
+    
+    
+    ;; after-button-down : Integer Integer -> void
+    ;; GIVEN: a location
+    ;; EFFECT: updates this widget to the state it should have
+    ;; following the specified mouse event at the given location.
+    
+    (define/public (after-button-down mx my)
+      (begin
+        (for-each
+         (lambda (toy) (send toy after-button-down mx my))
+         stoys)))
+    
+    
+    ;; after-button-up : Integer Integer -> void
+    ;; GIVEN: a location
+    ;; EFFECT: updates this widget to the state it should have
+    ;; following the specified mouse event at the given location.
+    
+    (define/public (after-button-up mx my)
+      (begin
+        (for-each
+         (lambda (toy) (send toy after-button-up mx my))
+         stoys)))
+    
+    ;; after-button-drag : Integer Integer -> void
+    ;; GIVEN: a location
+    ;; EFFECT: updates this widget to the state it should have
+    ;; following the specified mouse event at the given location.
+    
+    (define/public (after-drag mx my)
+      (begin
+        (for-each
+         (lambda (toy) (send toy after-drag mx my))
+         stoys)))
+    
+    ;; after-move : Integer Integer -> void
+    ;; GIVEN: a location
+    ;; EFFECT: updates this widget to the state it should have
+    ;; following the specified mouse event at the given location.
+    
+    (define/public (after-move mx my)
+      (begin
+        (for-each
+         (lambda (toy) (send toy after-move mx my))
+         stoys)))
+    
+    
+    
+    
+    ;; -> ListOfToy
+    ;;GIVEN :
+    ;;RETURNS : list of toys
+    
+    (define/public (get-toys)
+      stoys)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; We have three classes for Toy<%> : Throbber, Clock and Politician
+;; Throbber appears at the center of canvas and increase and reduces in size
+
+;; Constructor template of Throbber%:
+;; A Throbber is a 
+;; (new Throbber% [throbber-x Int][throbber-y Int]
+;;                [thobber-radius NonNegInt]
+;;                [mouse-xcoordinate Int] [mouse-ycoordinate Int]
+;;                [throbber-selected? Boolean]
+;;                [thober-radius-factor Int]
+;;                [throbber-mode String]
+;;                
+
+;; INTERPRETATION:
+;; Represents a throbber toy in the container with initial radius of 5
+;; which expands to 20 and reduces back to 5.
+;; throbber-x is the x-coordinate of the center of throbber 
+;; throbber-y is the y-coordinate of the center of throbber
+;; mouse-xcoordinate is the x-coordinate of mouse point if throbber is selected
+;; mouse-ycoordinate is the y-coordinate of mouse point if throbber is selected
+;; selected? is true throbber is selected, false otherwise
+;; throbber-radius is the current radius of the throbber
+;; throbber-radius-factor is a constant which is added to the radius in order to determine expansion or contraction
+;; throbber-mode represents the outline or solid for the throbbers
+
+(define Throbber% 
+  (class* object% (Toy<%>) 
+    
+    (init-field
+     throbber-x
+     throbber-y) ;;Initialising attributes for throbber's x and y coordinates
+    
+    
+    (init-field
+     [mouse-xcoordinate -1]
+     [mouse-ycoordinate -1]) ;;initialising mouse x and y coordinates as -1
+    
+    (init-field
+     [selected? false]) ;; initialising start throbber to be false
+    
+    (init-field
+     [throbber-radius 5]) ;; initialising throbber start radius to be 5
+    
+    (init-field
+     [throbber-radius-factor 2]) ;; initialising throbber radius factor to be 2
+    
+    (init-field
+     [throbber-mode "solid"]) ;; initialising starting throbber to be solid
+    
+    (field [MIN-RADIUS 5])
+    (field [MAX-RADIUS 20])
+    
+    
+    
+    (field [THROBBER-IMAGE (circle throbber-radius throbber-mode GREEN-COLOR)])
+    ;; defining a field for throbber image
+    
+    (super-new)
+    
+    ;;  after-move: Int Int -> void
+    ;;  EFFECT : Does nothing to the throbber after move
+    ;;  RETURNS: the state of this toy that should follow a mouse-move
+    ;;  at the given coordinates
+    
+    (define/public (after-move mx my)
+      this)
+    
+    
+    ;; toy-x : -> Int
+    ;; toy-y : -> Int
+    ;; RETURNS : x or y coordinate of center of throbber
+    
+    (define/public (toy-x) throbber-x)
+    (define/public (toy-y) throbber-y)
+    
+    ;; toy-data : -> PosInt
+    ;; RETURNS : radius of the throbber
+    
+    (define/public (toy-data) throbber-radius)
+    
+    ;; inside-throbber? : Integer Integer -> Boolean
+    ;; GIVEN : a location on the canvas
+    ;; RETURNS : true iff the location is inside this throbber.
+    ;; STARTEGY : Combining simple functions
+    
+    (define (inside-throbber? mx my)
+      (<= (+ (sqr (- throbber-x  mx)) (sqr (- throbber-y my)))
+          (sqr throbber-radius)))
+    
+    
+    ;; after-tick : -> void
+    ;; GIVEN : No arguments
+    ;; EFFECT: Updates the Throbber's state as it should be after a tick
+    ;; RETURNS : A Toy<%>  with expanding or reducing radius
+    ;; DESIGN STRATEGY: Cases on if Throbber is selected
+    
+    (define/public (after-tick)
+      (cond
+        [(equal? selected? true) this]
+        [(>= (+ throbber-radius throbber-radius-factor) MAX-RADIUS)
+         (begin
+           (set! throbber-radius MAX-RADIUS)
+           (set! throbber-radius-factor (- throbber-radius-factor)))]
+        [(< (+ throbber-radius throbber-radius-factor) MIN-RADIUS)
+         (begin
+           (set! throbber-radius MIN-RADIUS)
+           (set! throbber-radius-factor (- throbber-radius-factor)))]
+        [else
+         (begin
+           (set! throbber-radius (+ throbber-radius throbber-radius-factor))
+           (set! throbber-radius-factor throbber-radius-factor))]))          
+    
+    
+    ;; after-key-event : KeyEvent -> void
+    ;; GIVEN : key event "t"
+    ;; EFFECT : Does nothing as the throbber ignores key events
+    
+    (define/public (after-key-event kev)
+      this)
+    
+    ;; after-button-down :  Integer Integer -> void
+    ;; GIVEN: the location of a button-down event
+    ;; EFFECT: Updates the saved location of button-down mouse event
+    ;;         and sets the Throbber's selected? to true
+    ;; STRATEGY: Cases on whether the event is in the throbber
+    
+    (define/public (after-button-down mx my)
+      (if (inside-throbber? mx my)
+          (begin
+            (set! mouse-xcoordinate mx)
+            (set! mouse-ycoordinate my)
+            (set! throbber-mode "outline")
+            (set! selected? true))
+          this))
+    
+    
+    ;; after-button-up :  Integer Integer -> void
+    ;; GIVEN: the location of a button-up event
+    ;; EFFECT : Sets the throbber's selected to false if the mouse coordinates are inside the throbber
+    ;; STRATEGY: Cases on whether the event is in the throbber
+    
+    (define/public (after-button-up mx my)
+      (if (inside-throbber? mx my)
+          (begin
+            (set! mouse-xcoordinate 0)
+            (set! mouse-ycoordinate 0)
+            (set! throbber-mode "solid")
+            (set! selected? false))
+          this))
+    
+    
+    ;; after-drag : Integer Integer -> void
+    ;; GIVEN: the location of a drag event
+    ;; EFFECT : Moves the throbber so that the vector from the center to
+    ;;          the drag event is equal to (mx, my)
+    ;; STRATEGY: Cases on whether the throbber is selected.
+    
+    (define/public (after-drag mx my)
+      (if selected?
+          (begin
+            (set! throbber-x (- mx (- mouse-xcoordinate throbber-x)))
+            (set! throbber-y (- my (- mouse-ycoordinate throbber-y)))
+            (set! mouse-xcoordinate mx)
+            (set! mouse-ycoordinate my))
+          this))
+    
+    
+    ;; add-to-scene : Scene -> Scene
+    ;; RETURNS: a scene like the given one, but with this
+    ;; throbber painted on it.
+    
+    (define/public (add-to-scene scene)
+      (place-image (circle throbber-radius throbber-mode GREEN-COLOR) throbber-x throbber-y scene))))
+
+(define THROBBER-RADIUS 5)
+(define SOLID-VARIABLE "solid")
+(define OUTLINE-VARIABLE "outline")
+(define GREEN-COLOR "green")
+
+
+
+(begin-for-test
+  (local
+    ((define throbbertest (make-throbber 250 300)))
+    (check-equal? (send throbbertest toy-x) 250 "Does not return throbber's x-coordinate")
+    (check-equal? (send throbbertest toy-y) 300 "Does not return throbber's y-coordinate")
+    (check-equal?
+     (send throbbertest add-to-scene EMPTY-CANVAS)
+     (place-image (circle 5 SOLID-VARIABLE GREEN-COLOR) 250 300 EMPTY-CANVAS)
+     "Does not paing throbber image")
+    (send throbbertest after-button-down 250 300)
+    (send throbbertest after-tick)
+    (send throbbertest after-drag 300 340)
+    (send throbbertest after-button-up 300 340)
+    (check-equal? (send throbbertest toy-x) 300 "Does not return throbber's x-coordinate")
+    (send throbbertest after-button-down 500 240)
+    (send throbbertest after-tick)
+    (send throbbertest after-drag 300 340)
+    (send throbbertest after-button-up 500 240)
+    (send throbbertest after-move 300 340)
+    (send throbbertest after-key-event "t")
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (send throbbertest after-tick)
+    (check-equal? (send throbbertest toy-x) 300 "Does not return throbber's x-coordinate")
+    (check-equal? (send throbbertest toy-y) 340 "Does not return throbber's y-coordinate")
+    (check-equal? (send throbbertest toy-data) 7 "Does not return toy's radius")
+    (check-equal? (send throbbertest toy-x) 300 "Does not return throbber's x-coordinate")))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Clock appears at the center of canvas and clock tick is displayed inside it.
+
+
+;; Constructor template of Clock%:
+;; A Clock is a 
+;; (new Clock% [clock-x Int] [clock-y Int]
+;;   [mouse-xcoordinate Int] [mouse-ycoordinate Int]
+;;                [clock-selected? Boolean]
+;;                [clock-counter 0])
+
+
+;; INTERPRETATION:
+;; Represents a clock toy in the container 
+;; clock-x is the x-coordinate of the center of clock 
+;; clock-y is the y-coordinate of the center of clock
+;; mouse-xcoordinate is the x-coordinate of mouse point if clock is selected
+;; mouse-ycoordinate is the y-coordinate of mouse point if clock is selected
+;; selected? is true clock is selected
+;; clock-counter is the number of ticks since it was created  
+
+(define Clock% 
+  (class* object% (Toy<%>)
+    
+    (init-field
+     clock-x
+     clock-y) ;; initialising clock x and y coordinates
+    
+    (init-field
+     [mouse-xcoordinate -1]
+     [mouse-ycoordinate -1]) ;;initialising mouse coordinates
+    
+    (init-field
+     [selected? false]) ;; initialising initial clock to be unselected
+    
+    (init-field
+     [clock-counter 0]) ;; initialising clock-counter to be 0
+    
+    (field [SIDE-LENGTH 80])
+    (field [SIDE-HEIGHT 30])
+    (field [CLOCK-IMAGE (overlay (text (number->string clock-counter) 12 "red")
+                                 (rectangle SIDE-LENGTH SIDE-HEIGHT "outline" "blue"))])
+    ;;initialising length and height of the rectangle and an initial image 
+    
+    (super-new)
+    
+    
+    
+    ;; toy-x : -> Int
+    ;; toy-y : -> Int
+    ;; RETURNS : x or y coordinate of center of clock
+    
+    (define/public (toy-x) clock-x)
+    (define/public (toy-y) clock-y)
+    
+    ;; toy-data : -> PosInt
+    ;; RETURNS : increasing clock ticks with display inside clock
+    
+    (define/public (toy-data) clock-counter)
+    
+    
+    
+    ;; inside-clock? : Integer Integer -> Boolean
+    ;; GIVEN : a location on the canvas
+    ;; RETURNS : true iff the location of the mouse coordinates is inside this clock
+    
+    (define (inside-clock? mx my)
+      (and
+       (and (>= mx (- clock-x (/ SIDE-LENGTH 2)))
+            (<= mx (+ clock-x (/ SIDE-LENGTH 2)))
+            (and (>= my (- clock-y (/ SIDE-HEIGHT 2)))
+                 (<= my (+ clock-y (/ SIDE-HEIGHT 2)))))))
+    
+    ;;  after-move: Int Int -> void
+    ;;  GIVEN : location of the mouse coordinates
+    ;;  EFFECT : Does nothing to the clock after move
+    ;;  RETURNS: the state of this toy that should follow a mouse-move
+    ;;  at the given coordinates
+    
+    (define/public (after-move mx my)
+      this)
+    
+    ;; after-tick : -> void
+    ;; GIVEN: No arguments
+    ;; EFFECT: Updates the Clock's state after a tick
+    ;; RETURNS : a clock mini-toy
+    
+    (define/public (after-tick)
+      (begin
+        (set! clock-counter (+ 1 clock-counter))
+        (set! CLOCK-IMAGE (overlay (text (number->string clock-counter) 12 "red")
+                                   (rectangle SIDE-LENGTH SIDE-HEIGHT "outline" "blue")))))
+    
+    ;; after-key-event : KeyEvent -> void
+    ;; GIVEN : key event "c"
+    ;; EFFECT : Nothing happens as the clock ignores key events
+    
+    (define/public (after-key-event kev)
+      this)
+    
+    ;; after-button-down :  Integer Integer -> Void
+    ;; GIVEN: the location of a button-down event
+    ;; EFFECT : Update the mouse x and y coordinates to mx and my and set selected to be true
+    ;; STRATEGY: Cases on whether the event is in the clock
+    
+    (define/public (after-button-down mx my)
+      (if (inside-clock? mx my)
+          (begin
+            (set! selected? true)
+            (set! mouse-xcoordinate mx)
+            (set! mouse-ycoordinate my))
+          this))  
+    
+    
+    ;; after-button-up :  Integer Integer -> Void
+    ;; GIVEN: the location of a button-up event
+    ;; EFFECT : Set clock to be unselected
+    ;; STRATEGY: Cases on whether the event is in the clock
+    
+    (define/public (after-button-up mx my)
+      (if (inside-clock? mx my)
+          (begin
+            (set! selected? false)
+            (set! mouse-xcoordinate -1)
+            (set! mouse-ycoordinate -1))
+          this))
+    
+    ;; after-drag : Integer Integer -> Void
+    ;; GIVEN: the location of a drag event
+    ;; EFFECT : If the clock is selected, move it so that the vector from the center to
+    ;;          the drag event is equal to (mx, my)
+    ;; STRATEGY: Cases on whether the clock is selected.
+    
+    (define/public (after-drag mx my)
+      (if selected?
+          (begin
+            (set! clock-x (+ clock-x (- mx mouse-xcoordinate)))
+            (set! clock-y (+ clock-y (- my mouse-ycoordinate)))
+            (set! mouse-xcoordinate mx)
+            (set! mouse-ycoordinate my))
+          this))
+    
+    ;; add-to-scene : Scene -> Scene
+    ;; RETURNS: a scene like the given one, but with this
+    ;; clock painted
+    ;; on it
+    
+    (define/public (add-to-scene scene)
+      (place-image CLOCK-IMAGE clock-x clock-y scene))
+    
+    
+    
+    
+    ;; for-tests
+    #;(define/public (for-test:toy-selected?) selected?))) 
+
+
+
+(begin-for-test
+  (local
+    ((define clocktest (make-clock 250 300)))
+    (check-equal? (send clocktest toy-x) 250 "Does not return clock's x-coordinate")
+    (send clocktest after-button-down 250 300)
+    (send clocktest after-tick)
+    (send clocktest after-drag 300 340)
+    (send clocktest after-button-up 300 340)
+    (check-equal? (send clocktest toy-x) 300 "Does not return clock's x-coordinate")
+    (send clocktest after-button-down 500 250)
+    (send clocktest after-tick)
+    (send clocktest after-drag 300 340)
+    (send clocktest after-button-up 500 250)
+    (check-equal? (send clocktest toy-x) 300 "Does not return clock's x-coordinate")
+    (check-equal? (send clocktest toy-y) 340 "Does not return clock's y-coordinate")
+    (check-equal? (send clocktest toy-data) 2 "Does not return clock's time")
+    (send clocktest after-tick)
+    (send clocktest after-key-event "s")
+    (send clocktest add-to-scene EMPTY-CANVAS)
+    (check-equal? (send clocktest toy-data) 3 "Does not return clock's time")
+    (send clocktest after-move 300 340)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Politician moves in a straight line either towards the mouse position or away from it.
+;; However, he never reaches or passes the mouse position.
+
+
+;; Constructor template of Poltician%:
+;; A Politician is a 
+;; (new Politician%
+;;  [politician-x Int] [politician-y Int]
+;;   [mouse-xcoordinate Int] [mouse-ycoordinate Int]
+;;                [politician-speed Int])
+;;                
+
+
+;; INTERPRETATION:
+;; Represents a politician toy in the container 
+;; politician-x is the x-coordinate of the center of politician 
+;; politician-y is the y-coordinate of the center of politician
+;; mouse-xcoordinate is the x-coordinate of mouse point 
+;; mouse-ycoordinate is the y-coordinate of mouse point 
+;; politician-speed is the speed with which politician moves in a straight line
+
+(define Politician% 
+  (class* object% (Toy<%>)
+    
+    (init-field
+     politician-x
+     politician-y) ;;Initialising attributes for politician x and y coordinates
+    
+    
+    
+    (init-field
+     [mouse-xcoordinate -1]
+     [mouse-ycoordinate -1]) ;; Initialising mouse coordinates to -1
+    
+    
+    
+    
+    (init-field
+     [politician-speed 110]) ;; Initialising politicial speed
+    
+    (init-field
+     [hillary? true]) ;; Initialising with Hillary as true
+    
+    
+    
+    
+    (field [POLITICIAN-1 (bitmap "politician1.jpg")])  ;; Field location for Trump
+    (field [POLITICIAN-2 (bitmap "politician2.jpg")]) ;; field location for Hillary
+    
+    
+    
+    
+    (super-new)
+    
+    
+    
+    
+    ;; toy-x : -> Int
+    ;; toy-y : -> Int
+    ;; RETURNS : x or y coordinate of center of politician
+    
+    (define/public (toy-x) politician-x) 
+    (define/public (toy-y) politician-y)
+    
+    ;; toy-data : -> PosInt
+    ;; RETURNS : current distance to mouse
+    
+    (define/public (toy-data) (fetch-distance))
+    
+    ;; fetch-distance : -> Integer
+    ;; GIVEN : No arguments
+    ;; RETURNS : The distance between the mouse and politician's x and y coordinates using distance formula
+    
+    (define (fetch-distance)
+      (exact-floor
+       (sqrt (+ (sqr (- mouse-xcoordinate politician-x)) (sqr (- mouse-ycoordinate politician-y))))))
+    
+    
+    
+    ;; CONSTANTS :
+    
+    (define POLITICIAN-IMAGE1 POLITICIAN-1)
+    (define POLITICIAN-IMAGE2 POLITICIAN-2)
+    
+    ;;  after-move: Int Int -> void
+    ;;  EFFECT : updates the mouse x and y coordinates for the politician depending on the cursor location
+    ;;  RETURNS: the state of this toy that should follow a mouse-move
+    ;;  at the given coordinates
+    
+    (define/public (after-move cursor-x cursor-y)
+      (begin
+        (set! mouse-xcoordinate cursor-x)
+        (set! mouse-ycoordinate cursor-y)))
+    
+    ;; after-tick : -> void
+    ;; GIVEN : No arguments
+    ;; EFFECT : Updates the toy's state depending on the distance between the mousse and politician's coordinates
+    ;; STRATEGY : Combine simpler functions
+    
+    (define/public (after-tick)
+      (if
+       (>= (fetch-distance) 75)
+       (move-towards-mouse) (move-away-from-mouse)))
+    
+    
+    ;; move-toward-mouse: -> void
+    ;; GIVEN : No arguments
+    ;; EFFECT : Moves the politician towards the mouse
+    ;; STRATEGY : Combining simple functions
+    
+    (define (move-towards-mouse)
+      (if (equal? hillary? true)
+          (begin
+            (set! politician-x   (/ (+ politician-x mouse-xcoordinate) 2))
+            (set! politician-y   (/ (+ politician-y mouse-ycoordinate) 2))
+            (set! hillary? true))
+          (begin
+            (set! politician-x   (/ (+ politician-x mouse-xcoordinate) 2))
+            (set! politician-y   (/ (+ politician-y mouse-ycoordinate) 2))
+            (set! hillary? false))))
+    
+    
+    
+    ;; move-away-from-mouse: -> void
+    ;; GIVEN : No arguments
+    ;; EFFECT : Moves the politician away from the mouse
+    ;; STRATEGY : Combining simple functions
+    
+    (define (move-away-from-mouse)
+      (if (equal? hillary? true)
+          (return-trump) (return-hillary)))
+    
+    ;; return-trump : -> void
+    ;; GIVEN : No arguments
+    ;; EFFECT : Updates the toy's state to return trump
+    ;; STRATEGY : Cases on mouse coordinates
+    
+    (define (return-trump)
+      (cond
+        [(and (> mouse-xcoordinate politician-x) (> mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x (* -1 politician-speed)))
+           (set! politician-y  (+ politician-y (* -1 politician-speed)))
+           (set! hillary? false))]
+        [(and (< mouse-xcoordinate politician-x) (< mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x politician-speed))
+           (set! politician-y  (+ politician-y politician-speed))
+           (set! hillary? false))] 
+        [(and (< mouse-xcoordinate politician-x) (> mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x politician-speed))
+           (set! politician-y  (+ politician-y (* -1 politician-speed)))
+           (set! hillary? false))]
+        [(and (> mouse-xcoordinate politician-x) (< mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x (* -1 politician-speed)))
+           (set! politician-y  (+ politician-y politician-speed))
+           (set! hillary? false))]))
+    
+    
+    ;; return-hillary: -> void
+    ;; GIVEN : No arguments
+    ;; EFFECT : Updates the toy's state to return hillary
+    ;; STRATEGY : Cases on mouse coordinates
+    
+    (define (return-hillary)
+      (cond
+        [(and (> mouse-xcoordinate politician-x) (> mouse-ycoordinate politician-y))
+         
+         (begin
+           (set! politician-x  (+ politician-x (* -1 politician-speed)))
+           (set! politician-y  (+ politician-y (* -1 politician-speed)))
+           (set! hillary? true))]
+        [(and (< mouse-xcoordinate politician-x) (< mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x politician-speed))
+           (set! politician-y  (+ politician-y politician-speed))
+           (set! hillary? true))] 
+        [(and (< mouse-xcoordinate politician-x) (> mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x politician-speed))
+           (set! politician-y  (+ politician-y (* -1 politician-speed)))
+           (set! hillary? true))]
+        [(and (> mouse-xcoordinate politician-x) (< mouse-ycoordinate politician-y))
+         (begin
+           (set! politician-x  (+ politician-x (* -1 politician-speed)))
+           (set! politician-y  (+ politician-y politician-speed))
+           (set! hillary? true))]))
+    
+    
+    ;; after-key-event : KeyEvent -> void
+    ;; GIVEN : A key event
+    ;; EFFECT : The Poitician ignores key events
+    
+    (define/public (after-key-event kev)
+      this)
+    
+    
+    
+    ;; after-button-down :  Integer Integer -> void
+    ;; GIVEN : A key event
+    ;; EFFECT : The Poitician ignores key events
+    
+    (define/public (after-button-down mx my)
+      this)
+    
+    
+    
+    
+    
+    ;; after-button-up :  Integer Integer -> Toy
+    ;; GIVEN: the location of a button-up event
+    ;; EFFECT : Does nothing to the politician as it ignores a button-up
+    ;; RETURNS: the state of this toy that should follow a mouse button-up
+    ;;          at the given coordinates
+    
+    (define/public (after-button-up mx my)
+      this)
+    
+    
+    
+    
+    
+    ;; after-drag : Integer Integer -> void
+    ;; GIVEN: the location of a drag event
+    ;; EFFECT : Does nothing to the politician as it ignores a drag
+    ;; RETURNS: the state of this toy that should follow a mouse button-up
+    ;;          at the given coordinates
+    
+    
+    (define/public (after-drag mx my)
+      this)
+    
+    
+    ;; add-to-scene : Scene -> Scene
+    ;; RETURNS: a scene like the given one, but with the
+    ;; politician painted on it
+    
+    (define/public (add-to-scene scene)
+      (place-image
+       (if
+        (equal? hillary? true) POLITICIAN-IMAGE1 
+        POLITICIAN-IMAGE2 )
+       politician-x politician-y scene))))
+
+
+;; TESTS :
+
+(begin-for-test
+    (local
+      ((define politiciantest-towardsmouse (make-politician 250 300)))
+      (check-equal? (send politiciantest-towardsmouse toy-x) 250 "Does not return politician's x-coordinate")
+      (check-equal? (send politiciantest-towardsmouse toy-y) 300 "Does not return politician's y-coordinate")
+      (send politiciantest-towardsmouse after-move 326 376)
+      (send politiciantest-towardsmouse after-tick)
+      (check-equal? (send politiciantest-towardsmouse toy-x) 288 "Does not return politician's x-coordinate")
+      (send politiciantest-towardsmouse after-button-down 300 300)
+      (check-equal? (send politiciantest-towardsmouse toy-data) 53 "Does not return politician's x-coordinate")
+      (send politiciantest-towardsmouse after-move 220 240)
+      (send politiciantest-towardsmouse after-tick)
+      (send politiciantest-towardsmouse after-tick)
+      (send politiciantest-towardsmouse after-tick)
+      (send politiciantest-towardsmouse after-tick)
+      (send politiciantest-towardsmouse add-to-scene EMPTY-CANVAS)))
+
+(begin-for-test
+    (local
+      ((define politiciantest-awayfrommouse (make-politician 250 300)))
+      (send politiciantest-awayfrommouse after-move 260 310)
+      (send politiciantest-awayfrommouse after-tick)
+      (send politiciantest-awayfrommouse after-tick)
+      (send politiciantest-awayfrommouse after-tick)
+      (send politiciantest-awayfrommouse after-tick)
+      (send politiciantest-awayfrommouse after-move 110 200)
+      (send politiciantest-awayfrommouse after-tick)
+      (send politiciantest-awayfrommouse after-tick)
+      ))
+
+(begin-for-test
+    (local
+      ((define poltest (make-politician 260 310)))
+      (send poltest after-move 280 250)
+      (send poltest after-tick)
+      (send poltest after-tick)
+      (send poltest after-tick)))
+
+
+(begin-for-test
+  (local
+    ((define poltest-returnhillary (make-politician 250 300)))
+    (send poltest-returnhillary after-move 300 400)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-move 150 240)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-move 250 410)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary toy-x)
+    (send poltest-returnhillary after-move 450 200)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)
+    (send poltest-returnhillary after-tick)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;; make-throbber: PosInt PosInt -> Toy
+;; GIVEN: an x and a y position
+;; RETURNS: a new object of class Throbber% at center of the screen
+
+(define (make-throbber throbber-x throbber-y)
+  (new Throbber%
+       [throbber-x CANVAS-XCENTER]
+       [throbber-y CANVAS-YCENTER]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; make-clock : PosInt PosInt -> Toy
+;; GIVEN: an x and a y position
+;; RETURNS: an object representing a clock at the given position.
+
+(define (make-clock clock-x clock-y)
+  (new Clock%
+       [clock-x CANVAS-XCENTER]
+       [clock-y CANVAS-YCENTER]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; make-politician : PosInt PosInt -> Toy
+;; GIVEN: an x and a y position
+;; RETURNS: an object representing a politician at the given position
+
+(define (make-politician politician-x politician-y)
+  (new Politician%
+       [politician-x CANVAS-XCENTER]
+       [politician-y CANVAS-YCENTER]))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; TESTS :
+
+;; METATOY
+
+(define POLITICIAN-1-IMAGE
+  (bitmap "politician1.jpg"))
+(define POLITICIAN-2-IMAGE
+  (bitmap "politician2.jpg"))
+
+
+(define TOYLIST-TEST
+  (list (make-throbber 250 300) (make-clock 250 300) (make-politician 250 300)))
+
+(begin-for-test
+  (local
+    ((define metatoytest (make-metatoy TOYLIST-TEST)))
+    (check-equal? (length (send metatoytest get-toys)) 3 "Does not return the length of metatoy's list")
+    (send metatoytest after-key-event "t")
+    (send metatoytest after-key-event "c")
+    (send metatoytest after-key-event "p")
+    (send metatoytest after-key-event "x")
+    (send metatoytest after-tick)
+    (send metatoytest after-button-down 300 250)
+    (send metatoytest after-drag 100 100)
+    (send metatoytest after-button-up 100 100)
+    (send metatoytest add-to-scene EMPTY-CANVAS)
+    (send metatoytest after-button-down 400 400)
+    (send metatoytest after-drag 200 200)
+    (send metatoytest after-button-up 200 200)
+    (send metatoytest after-move 200 200)))
