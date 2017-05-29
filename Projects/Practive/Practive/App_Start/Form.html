@@ -1,8 +1,29 @@
 ﻿
 <html>
 	<head>
-		<title></title>
+		
+		<script type="text/javascript">
+
+		function validate()
+			{
+			if(document.myform.mybox.checked)
+			{
+			alert("checked");
+			}
+			else
+			{
+			alert("unchecked");
+			}
+
+			}
+			
+			</script>
+		
 	</head>
 	<body>
+		<form name="myform">
+		<input type="checkbox" name="mybox" />
+			<input type="submit" name="submit" onclick="validate()" />
+		</form>
 	</body>
 </html>
